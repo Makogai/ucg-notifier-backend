@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum ProgramType {
+  OSNOVNE
+  SPECIJALISTICKE
+  MAGISTARSKE
+  MASTER
+  DOKTORSKE
+}
+
+enum SubscriptionType {
+  FACULTY
+  PROGRAM
+  SUBJECT
+}
+
+model University {
+  id        Int      @id @default(autoincrement())
+  name      String
+  faculties Faculty[]
+}
+
+model Faculty {
+  id         Int      @id @default(autoincrement())
+  name       String
+  shortCode  String   @unique
+  url        String
+  logoUrl    String?
+  universityId Int?
+  university University? @relation(fields: [universityId], references: [id])
+
+  programs Program[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([universityId])
+}
+
+model Program {
+  id        Int        @id @default(autoincrement())
+  name      String
+  url       String     @unique
+  type      ProgramType
+  facultyId Int
+
+  faculty Faculty @relation(fields: [facultyId], references: [id])
+  subjects Subject[]
+  posts Post[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([facultyId])
+}
+
+model Subject {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String?
+  // Taken from "Predmeti" table columns (Sem, ECTS)
+  semester  Int?
+  ects      Float?
+  programId Int
+
+  program Program @relation(fields: [programId], references: [id])
+  posts Post[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // `code` comes from the subject link and is stable across reruns.
+  // (When `code` is missing we may still get duplicates, but most rows have it.)
+  @@unique([programId, code])
+  @@index([programId])
+}
+
+model Post {
+  id Int @id @default(autoincrement())
+
+  title        String
+  content      String?
+  url          String
+  publishedAt  DateTime?
+  hash         String  @unique
+
+  subjectId Int?
+  programId Int?
+
+  subject Subject? @relation(fields: [subjectId], references: [id])
+  program Program? @relation(fields: [programId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subjectId])
+  @@index([programId])
+}
+
+model User {
+  id    Int    @id @default(autoincrement())
+  deviceId String @unique
+  fcmToken String? // optional until the app provides one
+
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id Int @id @default(autoincrement())
+
+  userId       Int
+  type         SubscriptionType
+  referenceId Int
+  // PROGRAM: semester=0 means whole program, semester>0 filters by subject.semester.
+  // FACULTY/SUBJECT: always store 0.
+  semester Int @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type, referenceId, semester])
+  @@index([type, referenceId, semester])
+}
+

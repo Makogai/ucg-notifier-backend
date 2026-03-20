@@ -1,0 +1,26 @@
+# Dependencies & build output (rebuilt in image)
+node_modules
+dist
+
+# Git & IDE
+.git
+.gitignore
+.cursor
+
+# Local env & secrets (inject at runtime)
+.env
+.env.*
+!.env.example
+
+# Docs & misc
+*.md
+docs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (never bake into image)
+serviceaccount.json
+google-services.json
+*.pem

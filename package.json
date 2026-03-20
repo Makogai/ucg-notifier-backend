@@ -1,0 +1,54 @@
+{
+  "name": "ucg-notifier",
+  "version": "1.0.0",
+  "description": "UCG notifier backend (scrape + REST API)",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:worker": "node dist/workers/scraperWorker.js",
+    "start:schedule:posts-only": "node dist/jobs/schedulerPostsOnly.js",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:generate": "prisma generate",
+    "schedule": "tsx src/jobs/scheduler.ts",
+    "schedule:posts-only": "tsx src/jobs/schedulerPostsOnly.ts",
+    "scrape:run-once": "tsx src/jobs/runOnce.ts",
+    "scrape:test:etf:faculties-programs": "tsx src/jobs/runEtfFacultiesPrograms.ts",
+    "scrape:test:etf:subjects": "tsx src/jobs/runEtfSubjects.ts",
+    "scrape:test:etf:faculty-posts": "tsx src/jobs/runEtfFacultyPosts.ts",
+    "scrape:init": "tsx src/jobs/runInitScrape.ts",
+    "worker": "tsx src/workers/scraperWorker.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-mariadb": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "bullmq": "^5.71.0",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dayjs": "^1.11.20",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.7.0",
+    "ioredis": "^5.10.1",
+    "mysql2": "^3.20.0",
+    "prisma": "^7.5.0",
+    "puppeteer": "^24.40.0",
+    "tsx": "^4.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}

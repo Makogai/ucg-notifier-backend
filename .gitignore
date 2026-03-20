@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Secrets (never commit)
+serviceaccount.json
+google-services.json
+*.pem
+
+# OS / IDE
+.DS_Store
+Thumbs.db
