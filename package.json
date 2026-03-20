@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:generate": "prisma generate",
+    "seed:fix-table-names": "node scripts/fix-seed-table-names.mjs",
     "schedule": "tsx src/jobs/scheduler.ts",
     "schedule:posts-only": "tsx src/jobs/schedulerPostsOnly.ts",
     "scrape:run-once": "tsx src/jobs/runOnce.ts",
