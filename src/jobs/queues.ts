@@ -1,18 +1,19 @@
-import { JobScheduler, Queue, RedisConnection } from "bullmq";
+import { JobScheduler, Queue } from "bullmq";
 import { env } from "../config/env";
 
 export const queueName = "ucg-scraper";
 
-// BullMQ's TS types are strict about connection shape; at runtime `RedisConnection` works.
-// We cast here only at the type boundary.
-export const redisConnection: any = new RedisConnection(env.REDIS_URL as any);
+/**
+ * BullMQ must receive connection **options** with a `url` field — not a bare URL string.
+ * Passing a string gets merged with defaults via Object.assign and loses `url`, so ioredis
+ * falls back to 127.0.0.1:6379 (see bullmq RedisConnection constructor + init).
+ */
+export const redisConnectionOptions = { url: env.REDIS_URL };
 
 export const scrapingQueue = new Queue(queueName, {
-  connection: redisConnection as any,
+  connection: redisConnectionOptions as any,
 });
 
-// Manages repeat/delayed jobs for the queue.
 export const jobScheduler = new JobScheduler(queueName, {
-  connection: redisConnection as any,
+  connection: redisConnectionOptions as any,
 });
-

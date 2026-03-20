@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { scrapingQueue, redisConnection, queueName } from "../jobs/queues";
+import { scrapingQueue, redisConnectionOptions, queueName } from "../jobs/queues";
 import { ScraperService } from "../services/ScraperService";
 import { NotificationService } from "../services/NotificationService";
 import { logInfo, logWarn } from "../utils/logger";
@@ -49,7 +49,7 @@ const worker = new Worker(
     }
   },
   {
-    connection: redisConnection as any,
+    connection: redisConnectionOptions as any,
     concurrency: 1, // keep pipeline order stable
   },
 );
@@ -66,7 +66,6 @@ async function shutdown() {
   logInfo("Shutting down scraper worker");
   await worker.close().catch(() => undefined);
   await shutdownPuppeteer().catch(() => undefined);
-  await (redisConnection as any).disconnect?.().catch(() => undefined);
 }
 
 process.on("SIGINT", () => {

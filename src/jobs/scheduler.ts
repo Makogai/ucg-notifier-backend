@@ -1,4 +1,4 @@
-import { scrapingQueue, jobScheduler, redisConnection, queueName } from "./queues";
+import { scrapingQueue, jobScheduler, queueName } from "./queues";
 import { env } from "../config/env";
 import { logInfo } from "../utils/logger";
 
@@ -34,7 +34,7 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    // BullMQ's RedisConnection exposes `disconnect`/`close`.
-    await (redisConnection as any).disconnect?.().catch(() => undefined);
+    await scrapingQueue.close().catch(() => undefined);
+    await jobScheduler.close().catch(() => undefined);
   });
 
