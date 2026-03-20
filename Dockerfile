@@ -65,16 +65,18 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY seed-data.sql ./
+COPY ecosystem.config.cjs ./
+COPY scripts/start-all-prod.sh ./scripts/start-all-prod.sh
 
-RUN mkdir -p /app/.cache/puppeteer \
+RUN chmod +x /app/scripts/start-all-prod.sh \
+  && mkdir -p /app/.cache/puppeteer \
   && chown -R node:node /app
 
 USER node
 
 EXPOSE 3000
 
-# Override per service in Coolify:
-# - API (default):     node dist/index.js
-# - Worker:            node dist/workers/scraperWorker.js
-# - Scheduler:         node dist/jobs/schedulerPostsOnly.js
-CMD ["node", "dist/index.js"]
+# Default: API + worker + scheduler (PM2). Override CMD in Coolify if you split into 3 services:
+#   node dist/index.js | node dist/workers/scraperWorker.js | node dist/jobs/schedulerPostsOnly.js
+# Alternative single-container: /app/scripts/start-all-prod.sh
+CMD ["./node_modules/.bin/pm2-runtime", "start", "ecosystem.config.cjs"]
