@@ -10,6 +10,9 @@ export function setupSwagger(app: Express) {
     },
     servers: [
       {
+        url: "https://ucg.oracle.makogai.me",
+      },
+      {
         url: "http://127.0.0.1:3000",
       },
     ],
