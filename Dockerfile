@@ -65,6 +65,7 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY seed-data.sql ./
+COPY seed-faculty-staff.sql ./
 COPY ecosystem.config.cjs ./
 COPY scripts/start-all-prod.sh ./scripts/start-all-prod.sh
 

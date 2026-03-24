@@ -12,7 +12,7 @@ You can use **three Coolify services** (clearest ops) **or** **one service** wit
 | **Worker** | BullMQ consumer (scrapes + notifications) | `npm run start:worker` → `node dist/workers/scraperWorker.js` |
 | **Scheduler** | Enqueues recurring `scrapePosts` jobs | `npm run start:schedule:posts-only` → `node dist/jobs/schedulerPostsOnly.js` |
 
-The worker **does not** enqueue the schedule by itself — the scheduler process registers the repeat job in Redis. Run **both** worker and scheduler in production.
+The worker **does not** enqueue the schedule by itself — the scheduler process periodically enqueues `scrapePosts` in a loop. Run **both** worker and scheduler in production.
 
 ---
 
@@ -39,7 +39,7 @@ npx prisma migrate deploy
 npx prisma db seed   # omit if SEED_SKIP=true or DB already filled
 ```
 
-`seed-data.sql` is copied into the image at build time; keep it in the repo (or adjust `SEED_SQL_FILE` + bake a different file).
+`seed-data.sql` and `seed-faculty-staff.sql` are copied into the image at build time; keep them in the repo (or adjust `SEED_SQL_FILES` + bake additional files).
 
 ---
 
@@ -87,13 +87,14 @@ On a **new** database:
    npx prisma migrate deploy
    ```
 
-2. Load committed seed file (see `seed-data.sql`):
+2. Load committed seed SQL files (see `seed-data.sql`):
 
    ```bash
    npx prisma db seed
    ```
 
-   This runs `prisma/seed.ts`, which executes the SQL file (default `seed-data.sql` in repo root).
+This runs `prisma/seed.ts`, which can execute multiple SQL files in order.
+Use `SEED_SQL_FILES` (comma-separated) to include incremental files (e.g. `seed-data.sql,seed-faculty-staff.sql`).
 
 3. Set **`SEED_SKIP=true`** on later deploys if you want to avoid re-running seed (re-running can duplicate rows / fail on unique keys).
 
@@ -133,7 +134,7 @@ If the **worker** is not running, **admin notify** jobs stay in Redis: the API *
 ### What to check in logs
 
 - **Worker** — on startup you should see something like: `Scraper worker started queue=ucg-scraper ...`. After you trigger an admin notify test, you should see: `Worker processing notifySubscribers` and logs from `NotificationService`.
-- **Scheduler** — `Posts-only scheduler started queue=ucg-scraper every=...m` (then it mostly idles; it only enqueues periodic `scrapePosts`).
+- **Scheduler** — `Posts-only scheduler (loop) started queue=ucg-scraper every=...m` and then `Posts-only scheduler enqueued scrapePosts jobId=...` every interval.
 - **API** — `API listening on port ...` only proves HTTP is up, not that jobs run.
 
 ### If notifications still fail

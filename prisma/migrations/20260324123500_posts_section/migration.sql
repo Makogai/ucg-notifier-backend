@@ -1,0 +1,3 @@
+ALTER TABLE `posts`
+  ADD COLUMN `section` VARCHAR(191) NULL;
+

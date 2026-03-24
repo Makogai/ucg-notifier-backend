@@ -4,7 +4,8 @@
  *
  * Env:
  * - DATABASE_URL (required) — same as Prisma
- * - SEED_SQL_FILE — path relative to project root (default: seed-data.sql)
+ * - SEED_SQL_FILES — comma-separated list of paths relative to project root (default: seed-data.sql)
+ * - SEED_SQL_FILE — backwards-compatible single file (if SEED_SQL_FILES is not set)
  * - SEED_SKIP — if "1" or "true", exits without seeding
  */
 import "dotenv/config";
@@ -42,25 +43,68 @@ async function main() {
     throw new Error("SEED: DATABASE_URL is required");
   }
 
-  const relative =
-    process.env.SEED_SQL_FILE?.trim() || "seed-data.sql";
-  const sqlPath = path.resolve(process.cwd(), relative);
+  const seedSqlFilesEnv = process.env.SEED_SQL_FILES?.trim();
+  const seedSqlFileSingle = process.env.SEED_SQL_FILE?.trim();
 
-  if (!existsSync(sqlPath)) {
-    throw new Error(`SEED: SQL file not found: ${sqlPath}`);
-  }
-
-  const sql = readFileSync(sqlPath, "utf8");
-  if (!sql.trim()) {
-    throw new Error(`SEED: SQL file is empty: ${sqlPath}`);
-  }
+  const seedFiles = seedSqlFilesEnv
+    ? seedSqlFilesEnv
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [seedSqlFileSingle || "seed-data.sql"];
 
   const config = parseMysqlConnection(databaseUrl);
-  console.log(`SEED: Applying ${relative} → ${config.database} @ ${config.host}…`);
+  console.log(
+    `SEED: Applying ${seedFiles.join(", ")} → ${config.database} @ ${config.host}…`,
+  );
 
   const conn = await mysql.createConnection(config);
   try {
-    await conn.query(sql);
+    for (const relative of seedFiles) {
+      const sqlPath = path.resolve(process.cwd(), relative);
+      if (!existsSync(sqlPath)) {
+        throw new Error(`SEED: SQL file not found: ${sqlPath}`);
+      }
+
+      const sql = readFileSync(sqlPath, "utf8");
+      if (!sql.trim()) {
+        throw new Error(`SEED: SQL file is empty: ${sqlPath}`);
+      }
+
+      // When we reset/migrate, Prisma will already recreate `_prisma_migrations`.
+      // Your SQL dump may include `_prisma_migrations` blocks.
+      // If we remove only matching lines, we can leave behind fragments
+      // (e.g. column definitions) which makes the SQL invalid.
+      // Instead, strip the whole `_prisma_migrations` block.
+      const lines = sql.split(/\r?\n/);
+      const filteredLines: string[] = [];
+      let skipping = false;
+
+      for (const line of lines) {
+        if (!skipping && line.includes("_prisma_migrations")) {
+          skipping = true;
+          continue;
+        }
+
+        if (skipping) {
+          // Typical mysqldump layout includes:
+          //   LOCK TABLES `_prisma_migrations` WRITE;
+          //   ...
+          //   UNLOCK TABLES;
+          if (line.includes("UNLOCK TABLES;")) {
+            skipping = false;
+          }
+          continue;
+        }
+
+        filteredLines.push(line);
+      }
+
+      const filteredSql = filteredLines.join("\n");
+
+      console.log(`SEED: Applying ${relative}… (filtered _prisma_migrations lines)`);
+      await conn.query(filteredSql);
+    }
   } finally {
     await conn.end();
   }

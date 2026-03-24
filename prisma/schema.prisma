@@ -24,6 +24,8 @@ model University {
   id        Int      @id @default(autoincrement())
   name      String
   faculties Faculty[]
+
+  @@map("universities")
 }
 
 model Faculty {
@@ -36,11 +38,14 @@ model Faculty {
   university University? @relation(fields: [universityId], references: [id])
 
   programs Program[]
+  posts Post[]
+  staff FacultyStaff[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([universityId])
+  @@map("faculties")
 }
 
 model Program {
@@ -58,6 +63,7 @@ model Program {
   updatedAt DateTime @updatedAt
 
   @@index([facultyId])
+  @@map("programs")
 }
 
 model Subject {
@@ -71,6 +77,7 @@ model Subject {
 
   program Program @relation(fields: [programId], references: [id])
   posts Post[]
+  professorTeachings ProfessorTeaching[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -79,28 +86,38 @@ model Subject {
   // (When `code` is missing we may still get duplicates, but most rows have it.)
   @@unique([programId, code])
   @@index([programId])
+  @@map("subjects")
 }
 
 model Post {
   id Int @id @default(autoincrement())
 
   title        String
-  content      String?
+  // Plain text extracted from post detail page content.
+  content      String? @db.LongText
+  // HTML snippet extracted from post detail page content.
+  contentHtml  String? @db.LongText
+  // Faculty section source (e.g. Obavještenja, Vijesti, Akademska obavještenja...)
+  section      String?
   url          String
   publishedAt  DateTime?
   hash         String  @unique
 
+  facultyId Int?
   subjectId Int?
   programId Int?
 
+  faculty Faculty? @relation(fields: [facultyId], references: [id])
   subject Subject? @relation(fields: [subjectId], references: [id])
   program Program? @relation(fields: [programId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([facultyId])
   @@index([subjectId])
   @@index([programId])
+  @@map("posts")
 }
 
 model User {
@@ -112,6 +129,8 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("users")
 }
 
 model Subscription {
@@ -131,5 +150,134 @@ model Subscription {
 
   @@unique([userId, type, referenceId, semester])
   @@index([type, referenceId, semester])
+
+  @@map("subscriptions")
+}
+
+model FacultyStaff {
+  id Int @id @default(autoincrement())
+
+  facultyId Int
+
+  professorId Int
+
+  // Major section name from the faculty staff page, e.g. "Rukovodstvo" or "Angažovano osoblje".
+  category  String
+  // Position label shown under the staff card (e.g. "dekan", "redovni profesor"...)
+  position String?
+
+  faculty Faculty @relation(fields: [facultyId], references: [id])
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([facultyId])
+  @@unique([facultyId, professorId, category])
+  @@map("faculty_staff")
+}
+
+model Professor {
+  id Int @id @default(autoincrement())
+
+  // Stable profile URL from `/radnik/...`
+  profileUrl String @unique
+  name String
+  email String?
+  avatarUrl String?
+
+  // Clean/kept HTML for the "Biografija" section.
+  biographyHtml String? @db.LongText
+
+  // Same biography as plain text (derived from biographyHtml).
+  // Useful for clients that can't render HTML.
+  biographyText String? @db.LongText
+
+  // Full biography last scraped time
+  biographyUpdatedAt DateTime?
+
+  facultyStaff FacultyStaff[]
+  teachings ProfessorTeaching[]
+  selectedPublications ProfessorSelectedPublication[]
+  academicContributions ProfessorAcademicContribution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("professors")
+}
+
+model ProfessorTeaching {
+  id Int @id @default(autoincrement())
+
+  professorId Int
+
+  // "Jedinica" column (often faculty/unit name/code)
+  unit String?
+  programName String?
+  programType String?
+  semester Int?
+
+  subjectName String?
+  subjectCode String?
+
+  // Optional link to our normalized `Subject` table (best-effort match).
+  subjectId Int?
+  subject Subject? @relation(fields: [subjectId], references: [id])
+
+  // These come from columns like "P x GP", "V x GV", "L x GL".
+  pXgp Float?
+  vXgv Float?
+  lXgl Float?
+
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professorId])
+  @@map("professor_teachings")
+}
+
+model ProfessorSelectedPublication {
+  id Int @id @default(autoincrement())
+
+  professorId Int
+  year Int?
+  category String? @db.LongText
+  authors String? @db.LongText
+  title String? @db.LongText
+  source String? @db.LongText
+  url String? @db.LongText
+
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professorId])
+  @@map("professor_selected_publications")
+}
+
+model ProfessorAcademicContribution {
+  id Int @id @default(autoincrement())
+
+  professorId Int
+
+  // Card header title like "M1a-..." or "Q1a-..." from the academic contributions page.
+  contributionGroup String? @db.LongText
+  bibliographicValue String? @db.LongText
+
+  year Int?
+  ucgAuthors String? @db.LongText
+  details String? @db.LongText
+
+  professor Professor @relation(fields: [professorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professorId])
+  @@map("professor_academic_contributions")
 }
 

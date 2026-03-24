@@ -34,6 +34,16 @@ const worker = new Worker(
         await scraperService.scrapePosts();
         return;
       }
+      case "scrapeFacultyStaff": {
+        await scraperService.scrapeFacultyStaff();
+        return;
+      }
+      case "scrapeProfessorDetails": {
+        const rawProfileUrl = (job.data as { profileUrl?: unknown }).profileUrl;
+        if (typeof rawProfileUrl !== "string" || rawProfileUrl.trim().length === 0) return;
+        await scraperService.scrapeProfessorDetailsForProfileUrl(rawProfileUrl);
+        return;
+      }
       case "notifySubscribers": {
         const rawPostId = (job.data as { postId?: unknown }).postId;
         if (rawPostId === undefined || rawPostId === null) return;
@@ -62,6 +72,14 @@ worker.on("failed", async (job, err) => {
   logWarn(String(err));
 });
 
+worker.once("ready", () => {
+  logInfo(
+    `Scraper worker Redis ready, consuming queue=${queueName} headless=${String(
+      env.SCRAPER_PUPPETEER_HEADLESS,
+    )}`,
+  );
+});
+
 async function shutdown() {
   logInfo("Shutting down scraper worker");
   await worker.close().catch(() => undefined);
@@ -76,7 +94,7 @@ process.on("SIGTERM", () => {
 });
 
 logInfo(
-  `Scraper worker started queue=${queueName} headless=${String(
+  `Scraper worker process started (waiting for Redis) queue=${queueName} headless=${String(
     env.SCRAPER_PUPPETEER_HEADLESS,
   )}`,
 );

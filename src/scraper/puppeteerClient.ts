@@ -91,6 +91,136 @@ export async function fetchHtmlWithPage2(url: string): Promise<string[]> {
   }
 }
 
+/**
+ * Fetches HTML snapshots for multiple pagination pages.
+ *
+ * Used for "Predmeti" tables where semesters can be spread across pages
+ * controlled by pagination links (often client-side).
+ *
+ * The function detects numeric pagination buttons and clicks them sequentially.
+ */
+export async function fetchHtmlWithPagination(
+  url: string,
+  opts?: { maxPages?: number },
+): Promise<string[]> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  page.setDefaultNavigationTimeout(env.SCRAPER_PUPPETEER_TIMEOUT_MS);
+
+  const maxPages = opts?.maxPages ?? 50;
+
+  try {
+    await page.goto(url, {
+      waitUntil: "networkidle2",
+      timeout: env.SCRAPER_PUPPETEER_TIMEOUT_MS,
+    });
+
+    const htmls: string[] = [];
+    const signatureSet = new Set<string>();
+
+    const getTableSignature = async (): Promise<string> => {
+      try {
+        return await page.evaluate(() => {
+          const doc = (globalThis as any).document as any;
+          const rows = doc.querySelectorAll("#spisak_predmeta tbody tr");
+          const rowCount = rows ? rows.length : 0;
+          if (!rowCount) return `rows:0`;
+
+          const semesters: string[] = [];
+          const firstRowTds = rows[0]?.querySelectorAll("td");
+          const lastRowTds = rows[rowCount - 1]?.querySelectorAll("td");
+
+          const firstName =
+            firstRowTds && firstRowTds.length >= 2
+              ? (firstRowTds[1].textContent ?? "").trim()
+              : "";
+          const lastName =
+            lastRowTds && lastRowTds.length >= 2
+              ? (lastRowTds[1].textContent ?? "").trim()
+              : "";
+
+          // Collect up to first/last 30 semester values (fast, enough to distinguish pages).
+          const limit = Math.min(30, rowCount);
+          for (let i = 0; i < limit; i++) {
+            const tds = rows[i]?.querySelectorAll("td");
+            if (!tds || !tds.length) continue;
+            const sem = (tds[0].textContent ?? "").trim();
+            if (sem) semesters.push(sem);
+          }
+
+          const firstSem = semesters[0] ?? "";
+          const lastSem = semesters[semesters.length - 1] ?? "";
+
+          return `rows:${rowCount}|firstSem:${firstSem}|lastSem:${lastSem}|firstName:${firstName}|lastName:${lastName}`;
+        });
+      } catch {
+        return "";
+      }
+    };
+
+    const pushCurrent = async () => {
+      const html = await page.content();
+      const sig = await getTableSignature();
+      const key = sig ? sig : `len:${html.length}`;
+      if (signatureSet.has(key)) return;
+      signatureSet.add(key);
+      htmls.push(html);
+    };
+
+    await pushCurrent();
+
+    const pageNumbers = await page.evaluate((max) => {
+      const doc = (globalThis as any).document as any;
+      const links = Array.from(
+        doc.querySelectorAll("ul.pagination a, div.pagination a, nav a"),
+      ) as any[];
+      const nums = links
+        .map((a) => (a.textContent ?? "").trim())
+        .filter((t) => /^\d+$/.test(t))
+        .map((t) => Number(t))
+        .filter((n) => n >= 2 && Number.isFinite(n))
+        .sort((a, b) => a - b);
+      // Limit unique pages
+      return Array.from(new Set(nums)).slice(0, max);
+    }, maxPages);
+
+    for (const pageNumber of pageNumbers) {
+      const beforeSig = await getTableSignature();
+
+      const clicked = await page.evaluate((n) => {
+        const doc = (globalThis as any).document as any;
+        const links = Array.from(
+          doc.querySelectorAll("ul.pagination a, div.pagination a, nav a"),
+        ) as any[];
+        const target = links.find(
+          (a) => (a.textContent ?? "").trim() === String(n),
+        ) as any | undefined;
+        if (!target) return false;
+        target.click();
+        return true;
+      }, pageNumber);
+
+      if (!clicked) continue;
+
+      // Wait for client-side re-render.
+      await new Promise((r) => setTimeout(r, 1200));
+
+      // If signature changed, capture.
+      const afterSig = await getTableSignature();
+      if (afterSig && afterSig !== beforeSig) {
+        await pushCurrent();
+      } else {
+        // Fallback: still capture if table row count changed (best-effort).
+        await pushCurrent();
+      }
+    }
+
+    return htmls;
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
 export async function shutdownPuppeteer() {
   if (browserPromise) {
     const browser = await browserPromise;

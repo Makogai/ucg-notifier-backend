@@ -249,3 +249,7 @@ Models:
 - Scraper robustness: parsing uses heuristics; if UCG changes markup, update selectors/heuristics in `src/config/scraper.ts` and `src/scraper/ucgScraper.ts`.
 - Notifications: `notifySubscribers` sends FCM pushes via Firebase Admin (when configured).
 
+
+Local testing:
+if database changes made: npx prisma migrate reset --force
+then we can npx prisma db seed (to seed seed-data.sql)

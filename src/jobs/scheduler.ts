@@ -1,9 +1,9 @@
-import { scrapingQueue, jobScheduler, queueName } from "./queues";
+import { scrapingQueue, queueName } from "./queues";
 import { env } from "../config/env";
 import { logInfo } from "../utils/logger";
 
 async function main() {
-  await jobScheduler.waitUntilReady();
+  await scrapingQueue.waitUntilReady();
 
   const intervalMs = env.SCRAPER_SCHEDULE_EVERY_MINUTES * 60_000;
   const repeatJobId = "scrapeFaculties:repeat";
@@ -13,7 +13,7 @@ async function main() {
     {},
     {
       jobId: repeatJobId,
-      repeat: { every: intervalMs },
+      repeat: { every: intervalMs, immediately: true },
       attempts: 3,
       removeOnComplete: true,
       removeOnFail: false,
@@ -35,6 +35,5 @@ main()
   })
   .finally(async () => {
     await scrapingQueue.close().catch(() => undefined);
-    await jobScheduler.close().catch(() => undefined);
   });
 

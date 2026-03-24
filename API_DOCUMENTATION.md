@@ -2,6 +2,8 @@
 
 Base URL: `http://127.0.0.1:3000`
 
+Swagger UI: `http://127.0.0.1:3000/swagger`
+
 All primary keys are **integers** (`Int`).
 
 ## Program Type Values
@@ -37,6 +39,140 @@ Response:
   ]
 }
 ```
+
+### `GET /faculties/:id/staff?category=<OPTIONAL_STRING>`
+
+Returns staff “cards” scraped from the faculty staff page (`/osoblje/<shortCode>`).
+Same professor can appear multiple times if they are listed in multiple staff categories/sections.
+
+Response:
+```json
+{
+  "faculty": { "id": 1, "name": "...", "shortCode": "etf" },
+  "items": [
+    {
+      "id": 123,
+      "professorId": 55,
+      "profileUrl": "https://ucg.ac.me/radnik/130329-budimir-lutovac",
+      "name": "dr Budimir Lutovac",
+      "email": "budo@ucg.ac.me",
+      "position": "dekan",
+      "category": "Rukovodstvo",
+      "avatarUrl": "https://ucg.ac.me/tumber.php?src=..."
+    }
+  ]
+}
+```
+
+Ordering: `category ASC`, then `position ASC`, then `name ASC`.
+
+### `GET /faculties/:id/posts?section=<OPTIONAL>&limit=<N>&offset=<N>`
+
+Returns posts scraped at **faculty level** (`Post.facultyId` matches the faculty). These are the sections like Obavještenja, Vijesti, Akademska obavještenja, Obavještenja za predmete, etc.
+
+Query parameters:
+- `section` (optional): **exact** match on `Post.section` as stored (e.g. `Obavještenja`, `Vijesti`). Omit to return all faculty posts for that faculty.
+- `limit` (optional): default `200`, max `500`.
+- `offset` (optional): default `0` for pagination.
+
+Ordering: `publishedAt DESC`, then `id DESC`.
+
+Response:
+```json
+{
+  "faculty": { "id": 17, "name": "Prirodno-matematički fakultet", "shortCode": "pmf" },
+  "items": [
+    {
+      "id": 1234,
+      "title": "…",
+      "content": "plain text…",
+      "contentHtml": "<div>…</div>",
+      "section": "Obavještenja",
+      "url": "https://ucg.ac.me/objava/blog/…",
+      "publishedAt": "2026-03-20T12:00:00.000Z",
+      "hash": "…",
+      "facultyId": 17,
+      "subjectId": null,
+      "programId": null,
+      "createdAt": "…",
+      "updatedAt": "…"
+    }
+  ]
+}
+```
+
+### `GET /posts?facultyId=<ID>&section=<OPTIONAL>&limit=<N>&offset=<N>`
+
+Same data as `GET /faculties/:id/posts`, but the faculty is selected with `facultyId` in the query string (useful for generic HTTP clients).
+
+### `GET /professors/:id`
+Returns full professor details by professor id (biography, teaching subjects, selected publications, academic contributions).
+Response:
+```json
+{
+  "professor": {
+    "id": 55,
+    "profileUrl": "https://ucg.ac.me/radnik/130329-budimir-lutovac",
+    "name": "dr Budimir Lutovac",
+    "email": "budo@ucg.ac.me",
+    "avatarUrl": "https://ucg.ac.me/tumber.php?src=...",
+    "biographyHtml": "<div>...</div>",
+    "biographyText": "plain text biography..."
+  },
+  "teachings": [
+    {
+      "id": 1001,
+      "subjectId": 964,
+      "unit": "....",
+      "programName": "....",
+      "programType": "OSNOVNE",
+      "semester": 1,
+      "subjectName": "....",
+      "pXgp": 10,
+      "vXgv": 2,
+      "lXgl": 6
+    }
+  ],
+  "selectedPublications": [
+    {
+      "id": 2001,
+      "year": 2022,
+      "category": "Q1a-...",
+      "authors": "....",
+      "title": "....",
+      "source": "....",
+      "url": "https://..."
+    }
+  ],
+  "academicContributions": [
+    {
+      "id": 3001,
+      "contributionGroup": "M1a-...",
+      "year": 2019,
+      "ucgAuthors": "...",
+      "details": "..."
+    }
+  ]
+}
+```
+
+### `GET /professors/by-profile?profileUrl=<PROFILE_URL>`
+Same as above, but finds the professor by `profileUrl`.
+
+### Developer: how to populate professor details
+Run (one-off) after seeding/scraping faculty staff so `Professor` rows exist:
+```powershell
+$env:SCRAPER_TEST_PROFILE_URL='https://ucg.ac.me/radnik/130329-budimir-lutovac'
+npm run scrape:professor-details:once
+```
+
+To scrape multiple professors with missing `biographyHtml`:
+```powershell
+npm run scrape:professor-details:once
+```
+
+Optional env:
+- `SCRAPER_PROFILE_DETAILS_LIMIT` (default `20`)
 
 ### `GET /programs/:id/subjects`
 

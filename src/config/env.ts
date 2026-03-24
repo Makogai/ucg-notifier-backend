@@ -14,9 +14,11 @@ export const env = {
   REDIS_URL: required("REDIS_URL"),
 
   SCRAPER_BASE_URL: process.env.SCRAPER_BASE_URL ?? "https://ucg.ac.me",
-  SCRAPER_SCHEDULE_EVERY_MINUTES: Number(
-    process.env.SCRAPER_SCHEDULE_EVERY_MINUTES ?? 10,
-  ),
+  // Invalid / missing values must not become NaN (breaks BullMQ repeat { every }).
+  SCRAPER_SCHEDULE_EVERY_MINUTES: (() => {
+    const n = Number(process.env.SCRAPER_SCHEDULE_EVERY_MINUTES ?? 10);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 10;
+  })(),
 
   SCRAPER_PUPPETEER_HEADLESS:
     (process.env.SCRAPER_PUPPETEER_HEADLESS ?? "true").toLowerCase() ===

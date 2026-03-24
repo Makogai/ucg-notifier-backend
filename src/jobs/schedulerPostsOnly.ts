@@ -1,28 +1,23 @@
-import { scrapingQueue, jobScheduler, queueName } from "./queues";
+import { scrapingQueue, queueName } from "./queues";
 import { env } from "../config/env";
 import { logInfo } from "../utils/logger";
 
 async function main() {
-  await jobScheduler.waitUntilReady();
+  await scrapingQueue.waitUntilReady();
 
   const intervalMs = env.SCRAPER_SCHEDULE_EVERY_MINUTES * 60_000;
-  const repeatJobId = "scrapePosts:repeat";
 
-  await scrapingQueue.add(
-    "scrapePosts",
-    {},
-    {
-      jobId: repeatJobId,
-      repeat: { every: intervalMs },
-      attempts: 3,
-      removeOnComplete: true,
-      removeOnFail: false,
-    },
-  );
-
+  // Reliable scheduler: enqueue `scrapePosts` directly every N minutes.
+  // This avoids relying on BullMQ repeatable jobs + delayed promotion behavior.
   logInfo(
-    `Posts-only scheduler started queue=${queueName} every=${env.SCRAPER_SCHEDULE_EVERY_MINUTES}m`,
+    `Posts-only scheduler (loop) started queue=${queueName} every=${env.SCRAPER_SCHEDULE_EVERY_MINUTES}m`,
   );
+
+  while (true) {
+    const job = await scrapingQueue.add("scrapePosts", {}, { attempts: 3, removeOnComplete: true });
+    logInfo(`Posts-only scheduler enqueued scrapePosts jobId=${job.id}`);
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
 }
 
 main()
@@ -37,6 +32,5 @@ main()
   })
   .finally(async () => {
     await scrapingQueue.close().catch(() => undefined);
-    await jobScheduler.close().catch(() => undefined);
   });
 
