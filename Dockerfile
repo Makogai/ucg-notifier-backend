@@ -4,6 +4,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm ci
 
 COPY prisma ./prisma
@@ -20,7 +21,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 # Puppeteer: bundled Chromium needs these libs (see Puppeteer troubleshooting).
+# We'll prefer system chromium in container, so skip Puppeteer's download.
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-liberation \

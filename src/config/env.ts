@@ -27,6 +27,10 @@ export const env = {
     process.env.SCRAPER_PUPPETEER_TIMEOUT_MS ?? 30_000,
   ),
 
+  // Optional: force Puppeteer to use system chromium inside the container
+  // (more reliable than Puppeteer's downloaded binary on some platforms).
+  SCRAPER_PUPPETEER_EXECUTABLE_PATH: process.env.SCRAPER_PUPPETEER_EXECUTABLE_PATH,
+
   // When set, the scraper will only scrape this faculty (for fast testing).
   SCRAPER_TEST_FACULTY_SHORTCODE: process.env.SCRAPER_TEST_FACULTY_SHORTCODE,
 

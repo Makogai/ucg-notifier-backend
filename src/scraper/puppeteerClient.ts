@@ -1,13 +1,45 @@
 import puppeteer, { type Browser } from "puppeteer";
 import { env } from "../config/env";
 import { logInfo, logWarn } from "../utils/logger";
+import fs from "node:fs";
 
 let browserPromise: Promise<Browser> | null = null;
 
+function resolveChromiumExecutablePath(): string | undefined {
+  if (env.SCRAPER_PUPPETEER_EXECUTABLE_PATH?.trim()) {
+    return env.SCRAPER_PUPPETEER_EXECUTABLE_PATH.trim();
+  }
+
+  const candidates = [
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-headless-shell",
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      // ignore
+    }
+  }
+
+  return undefined;
+}
+
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
+    const executablePath = resolveChromiumExecutablePath();
+    if (executablePath) {
+      logInfo("Puppeteer using executablePath", { executablePath });
+    } else {
+      logInfo("Puppeteer using default bundled executablePath");
+    }
+
     browserPromise = puppeteer.launch({
       headless: env.SCRAPER_PUPPETEER_HEADLESS,
+      executablePath,
       // Some CI environments require no-sandbox.
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
       defaultViewport: { width: 1280, height: 720 },
