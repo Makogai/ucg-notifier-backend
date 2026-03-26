@@ -21,12 +21,22 @@ async function sleep(ms: number) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+// Ensure scrape jobs never run concurrently (Puppeteer + DB load).
+let scrapeChain: Promise<void> = Promise.resolve();
+function runScrapeExclusive(fn: () => Promise<void>): Promise<void> {
+  scrapeChain = scrapeChain.then(fn, fn);
+  return scrapeChain;
+}
+
 async function main() {
   const startupDelayMs = n("WORKER_STARTUP_DELAY_MS", 0);
   if (startupDelayMs > 0) {
     logWarn("=== WORKER STARTUP DELAY ===", { delayMs: startupDelayMs });
     await sleep(startupDelayMs);
   }
+
+  const concurrency = n("WORKER_CONCURRENCY", 5);
+  logWarn("=== WORKER CONCURRENCY ===", { concurrency });
 
   const worker = new Worker(
     queueName,
@@ -35,32 +45,44 @@ async function main() {
 
       switch (job.name) {
         case "scrapeFaculties": {
-          await scraperService.scrapeFaculties();
-          await scrapingQueue.add("scrapePrograms", {}, { attempts: 3, removeOnComplete: true });
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapeFaculties();
+            await scrapingQueue.add("scrapePrograms", {}, { attempts: 3, removeOnComplete: true });
+          });
           return;
         }
         case "scrapePrograms": {
-          await scraperService.scrapePrograms();
-          await scrapingQueue.add("scrapeSubjects", {}, { attempts: 3, removeOnComplete: true });
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapePrograms();
+            await scrapingQueue.add("scrapeSubjects", {}, { attempts: 3, removeOnComplete: true });
+          });
           return;
         }
         case "scrapeSubjects": {
-          await scraperService.scrapeSubjects();
-          await scrapingQueue.add("scrapePosts", {}, { attempts: 3, removeOnComplete: true });
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapeSubjects();
+            await scrapingQueue.add("scrapePosts", {}, { attempts: 3, removeOnComplete: true });
+          });
           return;
         }
         case "scrapePosts": {
-          await scraperService.scrapePosts();
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapePosts();
+          });
           return;
         }
         case "scrapeFacultyStaff": {
-          await scraperService.scrapeFacultyStaff();
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapeFacultyStaff();
+          });
           return;
         }
         case "scrapeProfessorDetails": {
           const rawProfileUrl = (job.data as { profileUrl?: unknown }).profileUrl;
           if (typeof rawProfileUrl !== "string" || rawProfileUrl.trim().length === 0) return;
-          await scraperService.scrapeProfessorDetailsForProfileUrl(rawProfileUrl);
+          await runScrapeExclusive(async () => {
+            await scraperService.scrapeProfessorDetailsForProfileUrl(rawProfileUrl);
+          });
           return;
         }
         case "notifySubscribers": {
@@ -79,7 +101,7 @@ async function main() {
     },
     {
       connection: redisConnectionOptions as any,
-      concurrency: 1, // keep pipeline order stable
+      concurrency: Math.max(1, concurrency),
     },
   );
 

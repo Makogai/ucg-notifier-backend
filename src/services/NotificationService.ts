@@ -12,6 +12,7 @@ export class NotificationService {
         id: true,
         title: true,
         url: true,
+        facultyId: true,
         programId: true,
         subjectId: true,
         subject: {
@@ -31,6 +32,7 @@ export class NotificationService {
     logInfo("notifySubscribersForPost", {
       postId: post.id,
       title: post.title.slice(0, 80),
+      facultyId: post.facultyId ?? null,
       programId: post.programId,
       subjectId: post.subjectId,
       subjectSemester: post.subject?.semester ?? null,
@@ -46,51 +48,62 @@ export class NotificationService {
       return;
     }
 
-    // Notifications are keyed by faculty/program/subject subscriptions.
-    // If we don't know programId/facultyId, we can't match subscriptions.
-    if (!post.programId || !post.program?.facultyId) {
-      logWarn("NOTIFY skip: missing mapping (programId/facultyId)", {
+    // Determine facultyId:
+    // - Prefer program.facultyId when programId exists (program-level posts).
+    // - Fallback to post.facultyId for faculty-level posts that don't map to a program.
+    const facultyId = post.program?.facultyId ?? post.facultyId ?? null;
+    const programId = post.programId ?? null;
+    const subjectId = post.subjectId ?? null;
+    const subjectSemester = post.subject?.semester ?? null;
+
+    if (!facultyId) {
+      logWarn("NOTIFY skip: missing mapping (facultyId)", {
         postId,
-        programId: post.programId,
-        facultyId: post.program?.facultyId ?? null,
-        reason: "missing_program_or_faculty",
+        facultyId: null,
+        programId,
+        subjectId,
+        reason: "missing_faculty",
         elapsedMs: Date.now() - startedAt,
       });
       return;
     }
 
-    const facultyId = post.program.facultyId;
-    const programId = post.programId;
-    const subjectId = post.subjectId ?? null;
-    const subjectSemester = post.subject?.semester ?? null;
-
     const subs = await prisma.subscription.findMany({
       where: {
         OR: [
+          // Faculty subscription always works when facultyId is known.
           { type: "FACULTY" as const, referenceId: facultyId, semester: 0 },
-          {
-            type: "PROGRAM" as const,
-            referenceId: programId,
-            semester: 0,
-          }, // whole program
-          ...(subjectSemester != null
-            ? [
+
+          // Program/subject subscriptions only make sense if we have a programId.
+          ...(programId != null
+            ? ([
                 {
                   type: "PROGRAM" as const,
                   referenceId: programId,
-                  semester: subjectSemester,
-                } as const,
-              ]
-            : []),
+                  semester: 0,
+                }, // whole program
+                ...(subjectSemester != null
+                  ? ([
+                      {
+                        type: "PROGRAM" as const,
+                        referenceId: programId,
+                        semester: subjectSemester,
+                      } as const,
+                    ] as const)
+                  : ([] as const)),
+              ] as const)
+            : ([] as const)),
+
+          // Exact subject subscriptions only make sense if subjectId is known.
           ...(subjectId != null
-            ? [
+            ? ([
                 {
                   type: "SUBJECT" as const,
                   referenceId: subjectId,
                   semester: 0,
                 },
-              ] // exact subject
-            : []),
+              ] as const)
+            : ([] as const)),
         ],
       },
       include: {
