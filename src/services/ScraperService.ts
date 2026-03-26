@@ -404,7 +404,15 @@ export class ScraperService {
               env.SCRAPER_BASE_URL,
             );
             if (paginated.length > 0) {
-              pageUrls = Array.from(new Set([section.listUrl, ...paginated]));
+              const unique = Array.from(new Set([section.listUrl, ...paginated]));
+              const getPageNum = (u: string): number => {
+                const m = u.match(/\/(\d+)(?:\/)?$/);
+                if (!m) return Number.POSITIVE_INFINITY;
+                const n = Number(m[1]);
+                return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+              };
+              unique.sort((a, b) => getPageNum(a) - getPageNum(b));
+              pageUrls = unique;
             }
           }
           logInfo("scrapePostsFacultyLevel section pages", {
@@ -415,16 +423,48 @@ export class ScraperService {
           });
 
           const sectionItems: ReturnType<typeof parseFacultyPostsFromSectionListHtml> = [];
+          const stopOnNoNewItems =
+            section.sectionTitle === "Obavještenja" && section.paginate === true;
+
           for (const pageUrl of pageUrls) {
             const pageHtml =
               pageUrl === section.listUrl ? firstPageHtml : await fetchHtml(pageUrl);
-            sectionItems.push(
-              ...parseFacultyPostsFromSectionListHtml(
-                pageHtml,
-                env.SCRAPER_BASE_URL,
-                section.sectionTitle,
-              ),
+
+            const parsed = parseFacultyPostsFromSectionListHtml(
+              pageHtml,
+              env.SCRAPER_BASE_URL,
+              section.sectionTitle,
             );
+            if (parsed.length > 0) sectionItems.push(...parsed);
+
+            if (!stopOnNoNewItems) continue;
+            if (parsed.length === 0) continue;
+
+            const hashes = parsed.map((p) => sha256(`${p.title}::${p.url}`));
+
+            const existing = await prisma.post.findMany({
+              where: { hash: { in: hashes } },
+              select: { hash: true },
+            });
+            const existingSet = new Set(existing.map((e) => e.hash));
+            const newCount = hashes.filter((h) => !existingSet.has(h)).length;
+
+            logInfo("scrapePostsFacultyLevel page newCount check", {
+              faculty: faculty.shortCode,
+              section: section.sectionTitle,
+              pageUrl,
+              parsed: parsed.length,
+              newCount,
+            });
+
+            if (newCount === 0) {
+              logInfo("scrapePostsFacultyLevel stop pagination (no new items)", {
+                faculty: faculty.shortCode,
+                section: section.sectionTitle,
+                stoppedAt: pageUrl,
+              });
+              break;
+            }
           }
           logInfo("scrapePostsFacultyLevel section parsed", {
             faculty: faculty.shortCode,
