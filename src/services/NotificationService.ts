@@ -140,6 +140,14 @@ export class NotificationService {
     }
 
     const admin = getFirebaseAdmin();
+    if (!admin.apps || admin.apps.length === 0) {
+      logWarn("NOTIFY skip: Firebase not initialized in this process", {
+        postId,
+        reason: "firebase_not_initialized",
+        elapsedMs: Date.now() - startedAt,
+      });
+      return;
+    }
 
     const data = {
       postId: String(post.id),
