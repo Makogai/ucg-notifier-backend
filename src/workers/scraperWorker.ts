@@ -80,8 +80,30 @@ worker.once("ready", () => {
   );
 });
 
+// Heartbeat so Coolify logs make it obvious worker is alive and consuming.
+// Also prints queue job counts so we can immediately spot stuck notify jobs.
+const heartbeat = setInterval(async () => {
+  try {
+    const counts = await scrapingQueue.getJobCounts(
+      "waiting",
+      "active",
+      "completed",
+      "failed",
+      "delayed",
+    );
+    logWarn("=== WORKER HEARTBEAT ===", {
+      queue: queueName,
+      counts,
+      headless: String(env.SCRAPER_PUPPETEER_HEADLESS),
+    });
+  } catch (e) {
+    logWarn("=== WORKER HEARTBEAT FAILED ===", { reason: String(e) });
+  }
+}, 60_000);
+
 async function shutdown() {
   logInfo("Shutting down scraper worker");
+  clearInterval(heartbeat);
   await worker.close().catch(() => undefined);
   await shutdownPuppeteer().catch(() => undefined);
 }

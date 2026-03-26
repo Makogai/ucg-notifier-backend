@@ -122,6 +122,49 @@ async function main() {
       `t+${i * intervalSeconds}s Job counts:`,
       counts,
     );
+
+    // On the first tick, print small samples so we can see what is stuck/failing.
+    if (i === 0) {
+      const waitingSample = await q.getJobs(["waiting"], 0, 4);
+      if (waitingSample.length) {
+        console.log("Waiting job sample (up to 5):");
+        for (const j of waitingSample) {
+          console.log("  -", j.name, "id=", j.id, "data=", j.data);
+        }
+      } else {
+        console.log("Waiting job sample: none");
+      }
+
+      const activeSample = await q.getJobs(["active"], 0, 1);
+      if (activeSample.length) {
+        const j = activeSample[0];
+        console.log("Active job sample:", j.name, "id=", j.id, "data=", j.data);
+      } else {
+        console.log("Active job sample: none");
+      }
+
+      const failedSample = await q.getJobs(["failed"], 0, 4);
+      if (failedSample.length) {
+        console.log("Failed job sample (up to 5):");
+        for (const j of failedSample) {
+          console.log(
+            "  -",
+            j.name,
+            "id=",
+            j.id,
+            "failedReason=",
+            j.failedReason,
+            "data=",
+            j.data,
+          );
+          const st = (j.stacktrace ?? []).slice(0, 2);
+          if (st.length) console.log("    stacktrace:", st);
+        }
+      } else {
+        console.log("Failed job sample: none");
+      }
+    }
+
     if (i < rounds - 1) {
       await new Promise((r) => setTimeout(r, intervalSeconds * 1000));
     }
