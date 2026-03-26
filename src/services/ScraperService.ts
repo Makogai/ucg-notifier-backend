@@ -16,6 +16,7 @@ import {
   parseProgramsFromFacultyHtml,
   parseSubjectsFromProgramHtml,
 } from "../scraper/ucgScraper";
+import type { PostScrapeItem } from "../scraper/ucgScraper";
 import { env } from "../config/env";
 import { sha256 } from "../utils/hash";
 import { logInfo, logWarn } from "../utils/logger";
@@ -340,6 +341,7 @@ export class ScraperService {
 
   private async scrapePostsFacultyLevel() {
     const testShortCode = process.env.SCRAPER_TEST_FACULTY_SHORTCODE?.trim();
+    const debugSingleFaculty = !!testShortCode;
     // Align with program-level: unset / 0 = scrape all posts (do not use slice(0, 0)).
     const postsLimit = Number(process.env.SCRAPER_TEST_POSTS_LIMIT ?? 0);
 
@@ -433,6 +435,37 @@ export class ScraperService {
           postsBySection.push({ title: section.sectionTitle, items: sectionItems });
         }
 
+        // Legacy fallback for the subject-wide list:
+        // Some faculty pages may expose "Obavještenja za predmete" via a link,
+        // but the section-page parser can return 0 items. The old posts list
+        // URL is the most reliable source for that specific category.
+        const predmetiTitle = "Obavještenja za predmete";
+        const hasPredmetiItems = postsBySection.some(
+          (s) => s.title === predmetiTitle && s.items.length > 0,
+        );
+        if (!hasPredmetiItems) {
+          const postsListUrl = extractFacultyPostsListUrlFromFacultyHtml(
+            facultyHtml,
+            env.SCRAPER_BASE_URL,
+          );
+          if (postsListUrl) {
+            const postsHtml = await fetchHtml(postsListUrl);
+            const predmetiItems = parsePostsFromPostsListHtml(
+              postsHtml,
+              env.SCRAPER_BASE_URL,
+            ).map((p) => ({
+              ...p,
+              sectionTitle: predmetiTitle,
+            }));
+            postsBySection.push({ title: predmetiTitle, items: predmetiItems });
+            logWarn("scrapePostsFacultyLevel predmeti fallback applied", {
+              faculty: faculty.shortCode,
+              url: postsListUrl,
+              items: predmetiItems.length,
+            });
+          }
+        }
+
         // Backward compatibility fallback: if no sections found, use old source.
         if (postsBySection.length === 0) {
           const postsListUrl = extractFacultyPostsListUrlFromFacultyHtml(
@@ -460,11 +493,67 @@ export class ScraperService {
           bySection: postsBySection.map((s) => ({ section: s.title, count: s.items.length })),
         });
 
-        const postItems = allSectionItems.slice(
-          0,
-          postsLimit > 0 ? postsLimit : undefined,
-        );
-        logInfo("scrapePostsFacultyLevel limit applied", {
+        const postItems =
+          postsLimit > 0
+            ? (() => {
+                // Allocate limit across sections:
+                // - Take all non-main sections first (these are already "first page only")
+                // - Use remaining limit for "Obavještenja" (main paginated section)
+                const mainTitle = "Obavještenja";
+                const orderedNonMainTitles = [
+                  "Vijesti",
+                  "Akademska obavještenja",
+                  "Obavještenja za predmete",
+                ];
+
+                // Merge items by title (in case both section-links + fallback add the same title).
+                const itemsByTitle = new Map<string, PostScrapeItem[]>();
+                for (const s of postsBySection) {
+                  const prev = itemsByTitle.get(s.title) ?? [];
+                  itemsByTitle.set(s.title, prev.concat(s.items));
+                }
+
+                const keep: PostScrapeItem[] = [];
+                let remaining = postsLimit;
+
+                const keptBySection: Record<string, number> = {};
+
+                const nonMainTitles = [
+                  ...orderedNonMainTitles,
+                  ...Array.from(itemsByTitle.keys()).filter(
+                    (t) => t !== mainTitle && !orderedNonMainTitles.includes(t),
+                  ),
+                ];
+
+                for (const title of nonMainTitles) {
+                  if (remaining <= 0) break;
+                  const items = itemsByTitle.get(title) ?? [];
+                  const taken = items.slice(0, remaining);
+                  keep.push(...taken);
+                  remaining -= taken.length;
+                  if (taken.length > 0) keptBySection[title] = taken.length;
+                }
+
+                if (remaining > 0) {
+                  const mainItems = itemsByTitle.get(mainTitle) ?? [];
+                  const taken = mainItems.slice(0, remaining);
+                  keep.push(...taken);
+                  remaining -= taken.length;
+                  if (taken.length > 0) keptBySection[mainTitle] = taken.length;
+                }
+
+                logInfo("scrapePostsFacultyLevel limit allocation", {
+                  faculty: faculty.shortCode,
+                  limit: postsLimit,
+                  keptTotal: keep.length,
+                  keptBySection,
+                });
+
+                return keep;
+              })()
+            : allSectionItems;
+
+        logInfo("scrapePostsFacultyLevel postItems ready for mapping", {
           faculty: faculty.shortCode,
           limit: postsLimit > 0 ? postsLimit : null,
           kept: postItems.length,
@@ -802,6 +891,18 @@ export class ScraperService {
         logInfo(
           `Faculty-level posts mapping: faculty=${faculty.shortCode} parsed=${postItems.length} inserted=${newPosts.length} updated=${mappingUpdated} queued=${uniqueIds.length}`,
         );
+
+        if (debugSingleFaculty) {
+          const counts = await prisma.post.groupBy({
+            by: ["section"],
+            where: { facultyId: faculty.id },
+            _count: true,
+          });
+          logInfo("scrapePostsFacultyLevel DB post counts by section", {
+            faculty: faculty.shortCode,
+            counts: counts.map((r) => ({ section: r.section, count: r._count })),
+          });
+        }
         processed += 1;
         logInfo("scrapePostsFacultyLevel faculty done", {
           progress: `${processed}/${totalFaculties}`,
