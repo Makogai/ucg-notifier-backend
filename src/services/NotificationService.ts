@@ -5,6 +5,7 @@ import { env } from "../config/env";
 
 export class NotificationService {
   async notifySubscribersForPost(postId: number) {
+    const startedAt = Date.now();
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: {
@@ -22,7 +23,10 @@ export class NotificationService {
       },
     });
 
-    if (!post) return;
+    if (!post) {
+      logWarn("NOTIFY skip: post not found", { postId });
+      return;
+    }
 
     logInfo("notifySubscribersForPost", {
       postId: post.id,
@@ -34,11 +38,26 @@ export class NotificationService {
 
     // If app isn't configured for push, just no-op.
     if (!env.FIREBASE_SERVICE_ACCOUNT_JSON && !env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-      logInfo("Push disabled (Firebase not configured).", { postId });
+      logWarn("NOTIFY skip: push disabled (Firebase not configured)", {
+        postId,
+        reason: "firebase_not_configured",
+        elapsedMs: Date.now() - startedAt,
+      });
       return;
     }
 
-    if (!post.programId || !post.program?.facultyId) return;
+    // Notifications are keyed by faculty/program/subject subscriptions.
+    // If we don't know programId/facultyId, we can't match subscriptions.
+    if (!post.programId || !post.program?.facultyId) {
+      logWarn("NOTIFY skip: missing mapping (programId/facultyId)", {
+        postId,
+        programId: post.programId,
+        facultyId: post.program?.facultyId ?? null,
+        reason: "missing_program_or_faculty",
+        elapsedMs: Date.now() - startedAt,
+      });
+      return;
+    }
 
     const facultyId = post.program.facultyId;
     const programId = post.programId;
@@ -79,6 +98,19 @@ export class NotificationService {
       },
     });
 
+    if (subs.length === 0) {
+      logWarn("NOTIFY no matching subscriptions", {
+        postId,
+        facultyId,
+        programId,
+        subjectId,
+        subjectSemester,
+        subsMatched: 0,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return;
+    }
+
     // Avoid sending duplicates if multiple subscription rules match the post.
     const tokenByDeviceId = new Map<string, string>();
     for (const s of subs) {
@@ -97,7 +129,15 @@ export class NotificationService {
       tokensCount: tokenByDeviceId.size,
     });
 
-    if (tokenByDeviceId.size === 0) return;
+    if (tokenByDeviceId.size === 0) {
+      logWarn("NOTIFY no tokens (users missing fcmToken)", {
+        postId,
+        subsMatched: subs.length,
+        tokensCount: 0,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return;
+    }
 
     const admin = getFirebaseAdmin();
 
@@ -128,6 +168,18 @@ export class NotificationService {
     const ok = results.filter((r) => r.status === "fulfilled").length;
     const fail = results.length - ok;
     logInfo("notifySubscribersForPost send results", { postId, ok, fail });
+    logWarn("NOTIFY summary", {
+      postId,
+      facultyId,
+      programId,
+      subjectId,
+      subjectSemester,
+      subsMatched: subs.length,
+      tokensCount: tokenByDeviceId.size,
+      ok,
+      fail,
+      elapsedMs: Date.now() - startedAt,
+    });
     if (fail > 0) {
       const firstRej = results.find((r) => r.status === "rejected") as
         | PromiseRejectedResult

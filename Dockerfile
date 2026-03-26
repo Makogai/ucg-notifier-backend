@@ -71,7 +71,7 @@ COPY prisma.config.ts ./
 COPY seed-data.sql ./
 COPY seed-faculty-staff.sql ./
 COPY ecosystem.config.cjs ./
-COPY scripts/start-all-prod.sh ./scripts/start-all-prod.sh
+COPY scripts ./scripts
 
 RUN chmod +x /app/scripts/start-all-prod.sh \
   && mkdir -p /app/.cache/puppeteer \
