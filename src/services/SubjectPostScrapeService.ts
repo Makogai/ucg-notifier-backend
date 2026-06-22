@@ -52,7 +52,7 @@ export class SubjectPostScrapeService {
     const pageHtml = await fetchHtml(pageUrl);
     const parsed = parsePostsFromPostsListHtml(pageHtml, env.SCRAPER_BASE_URL);
     const forSubject = parsed.filter((item) =>
-      this.matchesSubject(item, subject.code, subject.name),
+      this.matchesSubject(item, subject.code ?? "", subject.name),
     );
 
     const newPostsCount = await this.insertNewPosts(
@@ -131,7 +131,9 @@ export class SubjectPostScrapeService {
     subjectCode: string,
     subjectName: string,
   ): boolean {
-    if (item.subjectCode && item.subjectCode === subjectCode) return true;
+    if (subjectCode && item.subjectCode && item.subjectCode === subjectCode) {
+      return true;
+    }
 
     const itemName = item.subjectName ? normalizeText(item.subjectName) : "";
     const wanted = normalizeText(subjectName);
